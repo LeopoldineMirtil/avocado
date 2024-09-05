@@ -1,0 +1,223 @@
+---
+title: "Avocado Prices Case Study"
+author: "Leopoldine Mirtil"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Source
+
+This analysis uses the [Avocado Prices](https://www.kaggle.com/datasets/neuromusic/avocado-prices) data set which was made publicly available by Justin Kiggins on Kaggle.com. It contains historical data about avocado prices and sales throughout the United States. The data was collected from the Hass Avocado Board website in May 2018.
+
+ 
+### Objective
+
+The following tasks: 
+
+1. Identify the cities that had the cheapest and most expensive prices per year 
+2. Determine the average price and sales by type 
+3. Find the top 10 cities with the overall lowest and highest prices
+4. Analyze the relationship between prices and quantity
+
+
+## Import Data
+
+### Step 1 - Import Data
+
+#### Load Library
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyr)
+library(tidyverse)
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(lubridate)
+library(plotly)
+```
+
+#### Set Directory & Import Data
+
+```{r}
+df <- read.csv('avocado.csv')
+```
+
+
+### Step 2 - Clean Data
+
+```{r}
+#drop index column
+df <- df[-c(1)]
+
+#change data type of date 
+df$Date <- as.Date(df$Date)
+
+#add Col
+df$Sales = df$AveragePrice * df$Total.Volume
+
+#rename cols 
+df <- rename(df, TotalQuantity=Total.Volume, TotalBags=Total.Bags, SmallBags=Small.Bags, LargeBags=Large.Bags, 
+             XLargeBags=XLarge.Bags, Type=type, Year=year, Region=region)
+
+#remove PLU cols 
+df <- df[-c(4:6)] 
+```
+
+
+### Step 3 - Inspect Data
+
+#### Check for Missing/Null Values
+
+```{r}
+sapply(df, function(x) sum(is.na(x)))
+```
+
+#### Check for Empty Values
+
+```{r}
+sapply(df, function(x) sum(x==""))
+```
+#### View Modified Dataframe
+
+```{r}
+str(df)
+```
+
+
+```{r, echo=FALSE}
+#export modified file
+write.csv(df, 'avocadoPrices.csv', row.names = FALSE)
+```
+
+
+### Step 4 - Analyze Data
+
+#### Descriptive Analysis
+
+```{r}
+summary(df)
+```
+
+#### Summary Statistics of Region Prices
+
+```{r}
+df %>%
+  group_by(Region) %>%
+  summarise(MinPrice=min(AveragePrice),
+            MeanPrice=round(mean(AveragePrice),2),
+            MedianPrice = round(median(AveragePrice), 2),
+            MaxPrice=max(AveragePrice)) %>%
+  arrange(MinPrice) 
+```
+
+
+#### Annual Minimum & Maximum Prices 
+
+```{r, warning=FALSE, message=FALSE}
+df %>%
+  group_by(Year, Region) %>%
+  summarise(PriceRange = range(AveragePrice), .groups="drop") %>%
+  group_by(Year) %>%
+  filter(PriceRange == range(PriceRange))
+```
+
+
+#### Top 10 Regions by Cheapest Price
+
+```{r}
+df %>%
+aggregate(cbind(AveragePrice, TotalQuantity, Sales) ~ Region, min) %>%
+rename (MinPrice = AveragePrice,
+        Quantity = TotalQuantity) %>%
+arrange(MinPrice) %>%
+slice(1:10)
+```
+
+
+#### Top 5 Regions with Frequently Cheap Prices Per Year
+
+```{r}
+#create mode function
+mode_func <- function(x) {
+  u <- unique(x)
+  tab <- tabulate(match(x, u))
+  u[tab == max(tab)]
+}
+
+df %>%
+  group_by(Year, Region) %>%
+  reframe(CommonPrice= mode_func(AveragePrice)) %>%
+  arrange(Year, Region, CommonPrice) %>%
+  group_by(Year, Region) %>%
+  slice_head(n=1) %>%
+  arrange(Year, CommonPrice) %>%
+  group_by(Year) %>%
+  slice(1:5) 
+```
+
+#### Top and Bottom 10 Regions by Median Prices 
+
+```{r}
+df %>%
+  group_by(Region) %>%
+  reframe(MedianPrice= round(median(AveragePrice), 2)) %>%
+  arrange(MedianPrice) %>%
+  slice(unique(c(1:10, n() - 9:0))) 
+```
+
+#### Average Price and Sales by Type
+
+```{r}
+df %>%
+  group_by(Type) %>%
+  summarise(AvgPrice = round(mean(AveragePrice),2), 
+            AverageSales = mean(Sales)) %>%
+  arrange(AvgPrice)
+```
+
+
+### Step 5 - Visualizations
+
+```{r, echo=FALSE, warning=FALSE}
+df %>%
+  group_by(Region) %>%
+  summarise(MedianPrice= round(median(AveragePrice), 2)) %>%
+  arrange(MedianPrice) %>%
+  slice(unique(c(1:10, n() - 9:0))) %>%
+  ggplot(aes(y=reorder(Region, -MedianPrice), x=MedianPrice, fill=ifelse(MedianPrice < 1.50, "darkgreen", "darkred"))) +
+  geom_col() +
+  ggtitle(paste("Top & Bottom 10 Lowest Avocado-Priced Regions")) +
+  scale_fill_identity() +
+  theme(legend.position = "none", axis.title.y=element_blank(), axis.title.x=element_blank()) 
+```
+
+
+```{r, echo=FALSE, warning=FALSE}
+df %>%
+  group_by(Year, Region) %>%
+  reframe(Prices = range(AveragePrice)) %>%
+  group_by(Year) %>%
+  filter(Prices == range(Prices)) %>%
+  mutate(Cost = ifelse(Prices < 1, "Cheapest", "Expensive")) %>%
+  plot_ly(x = ~Year, y = ~Prices,  color=~Cost, type = 'bar', customdata=~Cost, text=~Region, 
+          hovertemplate=paste(' <b>%{customdata}</b><br>', 
+                              '%{x}: %{text}, $%{y:.2f}<br><extra></extra>')) %>%
+  layout(title="Annual Lowest and Highest Avocado Prices")
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+df %>%
+  group_by(Region) %>%
+  summarise(Price= round(median(AveragePrice), 2),
+            Quantity=median(TotalQuantity), .groups="drop") %>% 
+  arrange(Price) %>%
+  plot_ly(type="scatter", mode="markers", y = ~Quantity, x = ~Price, size=~Price, text= ~Region,
+          hovertemplate=paste(' <b>%{text}</b><br>', 
+                          'Price: $%{x:.2f}<br>',
+                          'Quantity: %{y:,.2f}<br><extra></extra>')) %>%
+  layout(title="2015-2018 Median Avocado Prices and Quantity")
+```
