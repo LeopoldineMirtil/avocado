@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ### Source
 
-This analysis uses the [Avocado Prices](https://www.kaggle.com/datasets/neuromusic/avocado-prices) data set which was made publicly available by Justin Kiggins on Kaggle.com. It contains historical data about avocado prices and sales throughout the United States. The data was collected from the Hass Avocado Board website in May 2018.
+This analysis uses the [Avocado Prices](https://www.kaggle.com/datasets/neuromusic/avocado-prices) data set which was made publicly available by Justin Kiggins on Kaggle.com. It contains historical data about avocado prices and sales throughout the United States. 
 
  
 ### Objective
@@ -80,6 +80,27 @@ sapply(df, function(x) sum(is.na(x)))
 ```{r}
 sapply(df, function(x) sum(x==""))
 ```
+
+#### Check Date Ranges per Year
+
+```{r}
+df %>%
+  group_by(Year) %>%
+  reframe(DateRange = range(Date)) %>%
+  arrange(Year)
+```
+
+#### Remove Rows
+
+```{r}
+#remove 2018 rows
+df <- df[!(df$Year %in% 2018),]
+
+#confirm removal
+unique(df$Year)
+```
+
+
 #### View Modified Dataframe
 
 ```{r}
@@ -219,5 +240,5 @@ df %>%
           hovertemplate=paste(' <b>%{text}</b><br>', 
                           'Price: $%{x:.2f}<br>',
                           'Quantity: %{y:,.2f}<br><extra></extra>')) %>%
-  layout(title="2015-2018 Median Avocado Prices and Quantity")
+  layout(title="2015-2017 Median Avocado Prices and Quantity")
 ```
